@@ -6,6 +6,15 @@ export const runtime = "edge";
 
 export async function POST(req: Request) {
   try {
+    // Check if OpenAI API key is configured
+    if (!process.env.OPENAI_API_KEY) {
+      console.error("OPENAI_API_KEY is not set");
+      return new Response(
+        JSON.stringify({ error: "OpenAI API key is not configured" }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
     const { messages, html, selectedSectionId, selectedSectionHtml } = await req.json();
 
     if (!html) {
@@ -57,23 +66,37 @@ Your response must be EXACTLY ONE <tr> element. Count your <tr> tags before resp
       systemPrompt = EMAIL_EDITOR_SYSTEM_PROMPT;
     }
 
-    const result = streamText({
-      model: openai("gpt-4o"),
-      system: systemPrompt,
-      messages: [
-        {
-          role: "user",
-          content: `${contextDescription}:\n\`\`\`html\n${contextHtml}\n\`\`\``,
-        },
-        ...messages,
-      ],
-    });
+    try {
+      const result = streamText({
+        model: openai("gpt-4o"),
+        system: systemPrompt,
+        messages: [
+          {
+            role: "user",
+            content: `${contextDescription}:\n\`\`\`html\n${contextHtml}\n\`\`\``,
+          },
+          ...messages,
+        ],
+      });
 
-    return result.toDataStreamResponse();
+      return result.toDataStreamResponse();
+    } catch (streamError) {
+      console.error("StreamText error:", streamError);
+      // Log more details about the error
+      if (streamError instanceof Error) {
+        console.error("Error message:", streamError.message);
+        console.error("Error stack:", streamError.stack);
+      }
+      throw streamError; // Re-throw to be caught by outer catch
+    }
   } catch (error) {
     console.error("Chat API error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return new Response(
-      JSON.stringify({ error: "Failed to process request" }),
+      JSON.stringify({
+        error: "Failed to process request",
+        details: errorMessage
+      }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
