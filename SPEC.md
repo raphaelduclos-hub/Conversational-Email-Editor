@@ -53,7 +53,6 @@ Two-panel horizontal split. Chat panel fixed 420px, preview takes remaining spac
 
 **Deferred from earlier slices:**
 - GenerationContext wiring to AI prompt (Slice 5)
-- Onboarding empty state (Slice 5)
 - Animations with Framer Motion (Slice 6)
 - UI design polish (Slice 6)
 - Export functionality (Slice 4)
@@ -99,6 +98,11 @@ Two-panel horizontal split. Chat panel fixed 420px, preview takes remaining spac
 - Remove the workaround error message from Slice 7.1
 - Validate surgical HTML modifications work reliably (target: <10% failure rate)
 - If still unreliable, explore structured JSON output or hybrid approach (see Known Issues)
+
+**3. Design mode for text blocks and buttons**
+- Extend the visual property panel to support text blocks and buttons (not just images/sections)
+- Text blocks: inline text editing, font size, font weight, color
+- Buttons: label text, link URL, background color, text color, border radius, padding
 
 ### Slice 9 — UX Polish (post-demo feedback, 2026-03-23)
 
