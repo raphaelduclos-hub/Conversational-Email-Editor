@@ -67,84 +67,35 @@ RULES:
 - "summary": short human-readable description like "Changed font size to 18px on 5 elements"
 - Return ONLY the JSON object. No other text.`;
     } else if (selectedElementId) {
-      // Element editing - use Claude Sonnet 4.5 for precise edits
+      // Element editing via JSON (surgical, no HTML manipulation risk)
       contextHtml = selectedSectionHtml;
-      contextDescription = `Section containing element (${selectedElementId})`;
-      systemPrompt = EMAIL_EDITOR_SYSTEM_PROMPT + `\n\n🎯 CRITICAL: ELEMENT EDITING MODE
+      contextDescription = `Section HTML containing the target element`;
+      systemPrompt = `You are an email element editor. Based on the HTML context and the user's instruction, return ONLY a valid JSON object — no markdown, no explanation, no code fences:
+{
+  "action": "single-edit",
+  "elementId": "${selectedElementId}",
+  "summary": "Brief description of what changed",
+  "style": { "css-property": "value" },
+  "text": "new text content"
+}
 
-⚠️ THE USER HAS ALREADY SELECTED A SPECIFIC ELEMENT TO EDIT ⚠️
-
-The user clicked on a specific element in the email preview. You are editing ONLY that element.
-
-Selected Element:
+Target element:
 - Type: ${selectedElementType || 'unknown'}
-- Tag: ${selectedElementTag || 'unknown'}
+- Tag: <${selectedElementTag || 'unknown'}>
 - ID: ${selectedElementId}
 
-When the user says "change to X" or "make it Y", they are referring to THIS SPECIFIC ELEMENT ONLY.
-DO NOT ask for clarification - the element is already selected.
+RULES:
+- "style": object with ONLY the CSS properties to change (kebab-case: "font-weight", "color", "font-size", "text-align", etc.)
+- "text": include ONLY if the user explicitly asks to change/replace the text content; OMIT for any style-only changes (bold, color, size, align, etc.)
+- To remove a CSS property, set its value to ""
+- "summary": one sentence like "Made the price bold" or "Changed text color to red"
+- Return ONLY the JSON object. No other text. No code fences.
 
-INPUT: You will receive ONE complete <tr> section containing the target element (marked with data-element-id="${selectedElementId}").
-
-OUTPUT REQUIREMENTS - READ CAREFULLY:
-✅ MUST return the COMPLETE <tr>...</tr> section EXACTLY as it was given to you
-✅ ONLY change the TEXT CONTENT or INLINE STYLE inside the element with data-element-id="${selectedElementId}"
-✅ Do NOT reformat, restructure, or "clean up" the HTML
-✅ Do NOT change whitespace, indentation, or line breaks outside the target element
-✅ Do NOT add any new elements (no images, no divs, no tables, NOTHING)
-✅ Do NOT remove any elements
-✅ Do NOT change the order of attributes
-✅ Do NOT change any attributes except the text content or inline style of the target element
-✅ PRESERVE EXACTLY as is (byte-for-byte):
-   - All other elements in the section (keep same count, same order, same formatting)
-   - All attributes (including data-element-id, data-element-type, data-section-id)
-   - All table structure (tables, tr, td tags)
-   - All inline styles on other elements
-   - All images (do NOT add, remove, or move images)
-   - All spacing and formatting
-✅ Return VALID HTML (properly nested tags, closed tags)
-✅ Do NOT add extra <tr> rows
-✅ Do NOT remove the <tr> wrapper
-✅ The ONLY thing that should change is the text/style inside the target element
-
-🎯 SURGICAL PRECISION: Copy the entire input HTML, then ONLY modify the target element's content/style. Everything else must remain IDENTICAL.
-
-EXAMPLE 1 - Text change:
-User: "Change to 100,00 EUR"
-INPUT:  <tr data-section-id="section-2"><td><p data-element-id="element-section-2-p-0">200,00 EUR</p><button>Buy</button></td></tr>
-OUTPUT: <tr data-section-id="section-2"><td><p data-element-id="element-section-2-p-0">100,00 EUR</p><button>Buy</button></td></tr>
-
-EXAMPLE 2 - Style change:
-User: "Make it bold"
-INPUT:  <tr data-section-id="section-1"><td><h1 data-element-id="element-section-1-h1-0">Title</h1><p>Text</p></td></tr>
-OUTPUT: <tr data-section-id="section-1"><td><h1 data-element-id="element-section-1-h1-0" style="font-weight: bold;">Title</h1><p>Text</p></td></tr>
-
-❌ WRONG - Reformatting the structure:
-INPUT:  <tr data-section-id="section-2"><td><p data-element-id="element-section-2-p-0">200,00 EUR</p><button>Buy</button></td></tr>
-OUTPUT: <tr data-section-id="section-2">
-  <td>
-    <p data-element-id="element-section-2-p-0">100,00 EUR</p>
-    <button>Buy</button>
-  </td>
-</tr>
-(This is WRONG because it added line breaks and indentation that weren't in the input)
-
-❌ WRONG - Missing <tr> wrapper:
-<td><p data-element-id="...">100,00 EUR</p></td>
-
-❌ WRONG - Only returning the element:
-<p data-element-id="...">100,00 EUR</p>
-
-❌ WRONG - Changing unrelated elements:
-INPUT:  <tr><td><h1 data-element-id="el-1">Price</h1><p data-element-id="el-2">100 EUR</p></td></tr>
-User wants to change el-2
-OUTPUT: <tr><td><h1 data-element-id="el-1" style="font-weight: bold;">Price</h1><p data-element-id="el-2">200 EUR</p></td></tr>
-(This is WRONG because it also changed the h1 style, which was NOT requested)
-
-Your response MUST start with <tr and end with </tr>
-
-VALIDATION: Your output will be checked. If it contains more than one <tr> tag, it will be REJECTED.
-Count your <tr> tags before responding. There should be EXACTLY ONE opening <tr> and ONE closing </tr>.`;
+EXAMPLES:
+User: "make it bold" → { "action": "single-edit", "elementId": "...", "summary": "Made text bold", "style": { "font-weight": "bold" } }
+User: "make it red" → { "action": "single-edit", "elementId": "...", "summary": "Changed text color to red", "style": { "color": "red" } }
+User: "change to Hello World" → { "action": "single-edit", "elementId": "...", "summary": "Changed text content", "text": "Hello World" }
+User: "center align" → { "action": "single-edit", "elementId": "...", "summary": "Centered text alignment", "style": { "text-align": "center" } }`;
     } else if (selectedSectionId && selectedSectionHtml) {
       // Scoped editing - only send the selected section
       contextHtml = selectedSectionHtml;

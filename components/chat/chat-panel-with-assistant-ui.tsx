@@ -141,16 +141,23 @@ Clean layout with dramatic hero, product details + CTA, tech close-up, 4-feature
       // Remove markdown code fences if present (```html, ```json, ``` ... ```)
       content = content.replace(/^```(?:html|json)?\s*/i, '').replace(/\s*```$/, '').trim();
 
-      // Check for multi-edit JSON response
+      // Check for single-edit or multi-edit JSON response
       const trimmedContent = content.trim();
-      if (trimmedContent.startsWith('{') && trimmedContent.includes('"multi-edit"')) {
+      if (trimmedContent.startsWith('{') && (trimmedContent.includes('"single-edit"') || trimmedContent.includes('"multi-edit"'))) {
         try {
           const instruction = JSON.parse(trimmedContent);
-          if (instruction.action === 'multi-edit' && Array.isArray(instruction.changes)) {
+
+          // Normalize both shapes to a changes array
+          const changes: { elementId: string; style?: Record<string, string>; text?: string }[] =
+            instruction.action === 'single-edit'
+              ? [{ elementId: instruction.elementId, style: instruction.style, text: instruction.text }]
+              : Array.isArray(instruction.changes) ? instruction.changes : [];
+
+          if (changes.length > 0) {
             const parser = new DOMParser();
             const doc = parser.parseFromString(currentHtml, 'text/html');
 
-            instruction.changes.forEach((change: { elementId: string; style?: Record<string, string>; text?: string }) => {
+            changes.forEach((change) => {
               const el = doc.querySelector(`[data-element-id="${change.elementId}"]`);
               if (!el) return;
 
@@ -169,7 +176,9 @@ Clean layout with dramatic hero, product details + CTA, tech close-up, 4-feature
             });
 
             onHtmlUpdate(doc.body.innerHTML);
-            setLastEditSummary(instruction.summary || `Updated ${instruction.changes.length} elements`);
+            const summary = instruction.summary ||
+              (instruction.action === 'single-edit' ? 'Updated element' : `Updated ${changes.length} elements`);
+            setLastEditSummary(summary);
             editingSectionRef.current = null;
             editingElementRef.current = null;
 
@@ -454,7 +463,7 @@ Clean layout with dramatic hero, product details + CTA, tech close-up, 4-feature
               const content = message.content.trim();
               const strippedContent = content.replace(/^```(?:html|json)?\s*/i, '').replace(/\s*```$/, '').trim();
               const isMultiEditMessage = message.role === 'assistant' &&
-                strippedContent.startsWith('{') && strippedContent.includes('"multi-edit"');
+                strippedContent.startsWith('{') && (strippedContent.includes('"multi-edit"') || strippedContent.includes('"single-edit"'));
               const isHtmlMessage = isMultiEditMessage || (message.role === 'assistant' && (
                 content.includes('<!DOCTYPE') ||
                 content.includes('<html') ||
