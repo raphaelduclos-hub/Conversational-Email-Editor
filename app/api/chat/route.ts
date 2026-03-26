@@ -1,4 +1,4 @@
-import { openai } from "@ai-sdk/openai";
+import { anthropic } from "@ai-sdk/anthropic";
 import { streamText } from "ai";
 import { EMAIL_EDITOR_SYSTEM_PROMPT } from "@/lib/prompts/email-editor";
 
@@ -6,16 +6,16 @@ export const runtime = "edge";
 
 export async function POST(req: Request) {
   try {
-    // Check if OpenAI API key is configured
-    if (!process.env.OPENAI_API_KEY) {
-      console.error("OPENAI_API_KEY is not set");
+    // Check if Anthropic API key is configured
+    if (!process.env.ANTHROPIC_API_KEY) {
+      console.error("ANTHROPIC_API_KEY is not set");
       return new Response(
-        JSON.stringify({ error: "OpenAI API key is not configured" }),
+        JSON.stringify({ error: "Anthropic API key is not configured" }),
         { status: 500, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    const { messages, html, selectedSectionId, selectedSectionHtml, selectedElementId, selectedElementType, selectedElementTag } = await req.json();
+    const { messages, html, selectedSectionId, selectedSectionHtml, selectedElementId, selectedElementType, selectedElementTag, multiSelectElementIds } = await req.json();
 
     // Debug log to see what's being sent
     console.log('🔍 API received:', {
@@ -36,42 +36,38 @@ export async function POST(req: Request) {
     let contextDescription: string;
     let systemPrompt: string;
 
-    if (selectedElementId) {
-      // Element editing - return immediate error without calling AI
-      console.log('⚡ Element selected - returning immediate error (no AI call)');
+    if (multiSelectElementIds && multiSelectElementIds.length > 0) {
+      contextHtml = html;
+      contextDescription = `Full email HTML`;
+      systemPrompt = EMAIL_EDITOR_SYSTEM_PROMPT + `\n\n🎯 MULTI-EDIT MODE
 
-      const errorMessage = `I'm working with GPT-4o and I'm not capable enough to precisely edit individual elements like prices, text, or buttons.
+The user has selected ${multiSelectElementIds.length} elements simultaneously. Their IDs are:
+${multiSelectElementIds.map((id: string) => `- ${id}`).join('\n')}
 
-**What works well:**
-- Edit the entire section (click on the whole section, not individual elements)
-- Use the Visual Editor (toggle below) for colors, spacing, alignment, etc.
+These are all "${selectedElementType}" elements (tag: <${selectedElementTag}>).
 
-Sorry for the limitation! 🙏`;
+Based on the user's instruction, return ONLY a valid JSON object — no markdown, no explanation, no code fences:
+{
+  "action": "multi-edit",
+  "summary": "Brief description of what was changed",
+  "changes": [
+    {
+      "elementId": "element-section-X-tag-Y",
+      "style": { "css-prop": "value" },
+      "text": "optional new text"
+    }
+  ]
+}
 
-      // Return as a stream (like AI responses) so useChat can handle it
-      const result = streamText({
-        model: openai("gpt-4o-mini"),
-        messages: [{ role: "assistant", content: errorMessage }],
-        maxTokens: 1, // Don't actually generate anything
-      });
-
-      // Override to return our error message immediately
-      const encoder = new TextEncoder();
-      const stream = new ReadableStream({
-        start(controller) {
-          controller.enqueue(encoder.encode(`0:${JSON.stringify(errorMessage)}\n`));
-          controller.close();
-        }
-      });
-
-      return new Response(stream, {
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-          "X-Vercel-AI-Data-Stream": "v1"
-        }
-      });
-
-      // OLD CODE - kept for reference but unreachable now
+RULES:
+- Include ALL ${multiSelectElementIds.length} element IDs in the "changes" array
+- "style": object with ONLY the CSS properties that should change (kebab-case names, e.g. "font-size", "color", "font-weight")
+- "text": include ONLY if text content should change; omit the field otherwise
+- To remove a style property, set its value to ""
+- "summary": short human-readable description like "Changed font size to 18px on 5 elements"
+- Return ONLY the JSON object. No other text.`;
+    } else if (selectedElementId) {
+      // Element editing - use Claude Sonnet 4.5 for precise edits
       contextHtml = selectedSectionHtml;
       contextDescription = `Section containing element (${selectedElementId})`;
       systemPrompt = EMAIL_EDITOR_SYSTEM_PROMPT + `\n\n🎯 CRITICAL: ELEMENT EDITING MODE
@@ -91,21 +87,27 @@ DO NOT ask for clarification - the element is already selected.
 INPUT: You will receive ONE complete <tr> section containing the target element (marked with data-element-id="${selectedElementId}").
 
 OUTPUT REQUIREMENTS - READ CAREFULLY:
-✅ MUST return the COMPLETE <tr>...</tr> section
-✅ ONLY change the TEXT CONTENT inside the element with data-element-id="${selectedElementId}"
+✅ MUST return the COMPLETE <tr>...</tr> section EXACTLY as it was given to you
+✅ ONLY change the TEXT CONTENT or INLINE STYLE inside the element with data-element-id="${selectedElementId}"
+✅ Do NOT reformat, restructure, or "clean up" the HTML
+✅ Do NOT change whitespace, indentation, or line breaks outside the target element
 ✅ Do NOT add any new elements (no images, no divs, no tables, NOTHING)
 ✅ Do NOT remove any elements
-✅ Do NOT change any attributes except the text content
-✅ PRESERVE EXACTLY as is:
-   - All other elements in the section (keep same count, same order)
+✅ Do NOT change the order of attributes
+✅ Do NOT change any attributes except the text content or inline style of the target element
+✅ PRESERVE EXACTLY as is (byte-for-byte):
+   - All other elements in the section (keep same count, same order, same formatting)
    - All attributes (including data-element-id, data-element-type, data-section-id)
-   - All table structure
-   - All inline styles
+   - All table structure (tables, tr, td tags)
+   - All inline styles on other elements
    - All images (do NOT add, remove, or move images)
+   - All spacing and formatting
 ✅ Return VALID HTML (properly nested tags, closed tags)
 ✅ Do NOT add extra <tr> rows
 ✅ Do NOT remove the <tr> wrapper
-✅ The ONLY thing that should change is the text inside the target element
+✅ The ONLY thing that should change is the text/style inside the target element
+
+🎯 SURGICAL PRECISION: Copy the entire input HTML, then ONLY modify the target element's content/style. Everything else must remain IDENTICAL.
 
 EXAMPLE 1 - Text change:
 User: "Change to 100,00 EUR"
@@ -117,11 +119,27 @@ User: "Make it bold"
 INPUT:  <tr data-section-id="section-1"><td><h1 data-element-id="element-section-1-h1-0">Title</h1><p>Text</p></td></tr>
 OUTPUT: <tr data-section-id="section-1"><td><h1 data-element-id="element-section-1-h1-0" style="font-weight: bold;">Title</h1><p>Text</p></td></tr>
 
+❌ WRONG - Reformatting the structure:
+INPUT:  <tr data-section-id="section-2"><td><p data-element-id="element-section-2-p-0">200,00 EUR</p><button>Buy</button></td></tr>
+OUTPUT: <tr data-section-id="section-2">
+  <td>
+    <p data-element-id="element-section-2-p-0">100,00 EUR</p>
+    <button>Buy</button>
+  </td>
+</tr>
+(This is WRONG because it added line breaks and indentation that weren't in the input)
+
 ❌ WRONG - Missing <tr> wrapper:
 <td><p data-element-id="...">100,00 EUR</p></td>
 
 ❌ WRONG - Only returning the element:
 <p data-element-id="...">100,00 EUR</p>
+
+❌ WRONG - Changing unrelated elements:
+INPUT:  <tr><td><h1 data-element-id="el-1">Price</h1><p data-element-id="el-2">100 EUR</p></td></tr>
+User wants to change el-2
+OUTPUT: <tr><td><h1 data-element-id="el-1" style="font-weight: bold;">Price</h1><p data-element-id="el-2">200 EUR</p></td></tr>
+(This is WRONG because it also changed the h1 style, which was NOT requested)
 
 Your response MUST start with <tr and end with </tr>
 
@@ -143,18 +161,44 @@ STRICT RULES:
 ❌ NEVER duplicate the section
 ❌ NEVER create new sections
 ❌ NEVER add additional rows
-✅ ONLY modify content INSIDE the single <tr> element
+❌ NEVER reformat, restructure, or "clean up" the HTML beyond what was requested
+❌ NEVER change whitespace, indentation, or formatting unless it's part of the requested change
+✅ ONLY modify the specific content the user asked to change
 ✅ Keep the same structure: ONE <tr> with ONE or more <td> inside
+✅ Preserve all existing elements, attributes, and styles not mentioned in the request
 ✅ Return a single, complete <tr>...</tr> element
 
-EXAMPLE:
+🎯 SURGICAL PRECISION: Make ONLY the requested change. Do not "improve" or reorganize other parts.
+
+EXAMPLE 1 - Text change:
 User says: "Make the heading red"
-INPUT:  <tr><td><h1 style="color: black;">Hello</h1></td></tr>
-OUTPUT: <tr><td><h1 style="color: red;">Hello</h1></td></tr>
+INPUT:  <tr><td><h1 style="color: black;">Hello</h1><p>World</p></td></tr>
+OUTPUT: <tr><td><h1 style="color: red;">Hello</h1><p>World</p></td></tr>
+
+EXAMPLE 2 - Content change:
+User says: "Change the price to 50 EUR"
+INPUT:  <tr data-section-id="section-1"><td align="center"><p style="font-size: 24px;">100 EUR</p><button>Buy</button></td></tr>
+OUTPUT: <tr data-section-id="section-1"><td align="center"><p style="font-size: 24px;">50 EUR</p><button>Buy</button></td></tr>
 
 ❌ WRONG (duplicated):
 <tr><td><h1 style="color: red;">Hello</h1></td></tr>
 <tr><td><h1 style="color: red;">Hello</h1></td></tr>
+
+❌ WRONG (reformatted without being asked):
+INPUT:  <tr><td><h1 style="color: black;">Hello</h1><p>World</p></td></tr>
+OUTPUT: <tr>
+  <td>
+    <h1 style="color: red;">Hello</h1>
+    <p>World</p>
+  </td>
+</tr>
+(This is WRONG because it added indentation that wasn't requested)
+
+❌ WRONG (changed unrelated content):
+INPUT:  <tr><td><h1 style="color: black;">Hello</h1><p style="font-size: 14px;">World</p></td></tr>
+User asks to make heading red
+OUTPUT: <tr><td><h1 style="color: red; font-weight: bold;">Hello</h1><p style="font-size: 16px;">World</p></td></tr>
+(This is WRONG because it also made the heading bold and changed the paragraph font size, which wasn't requested)
 
 Your response must be EXACTLY ONE <tr> element. Count your <tr> tags before responding.`;
     } else {
@@ -165,8 +209,8 @@ Your response must be EXACTLY ONE <tr> element. Count your <tr> tags before resp
     }
 
     try {
-      // Use gpt-4o for everything (gpt-4o-mini was causing issues)
-      const modelToUse = "gpt-4o";
+      // Use Claude 3.5 Sonnet for better precision in HTML editing
+      const modelToUse = "claude-sonnet-4-5-20250929";
 
       console.log('🤖 AI Model:', modelToUse, '| Element ID:', selectedElementId || 'none');
 
@@ -193,21 +237,45 @@ Your response must be EXACTLY ONE <tr> element. Count your <tr> tags before resp
             }
           ];
         }
+      } else if (multiSelectElementIds && multiSelectElementIds.length > 0 && messages.length > 0) {
+        const lastMessage = messages[messages.length - 1];
+        if (lastMessage.role === 'user') {
+          enhancedMessages = [
+            ...messages.slice(0, -1),
+            {
+              ...lastMessage,
+              content: `Apply to all ${multiSelectElementIds.length} selected ${selectedElementType} elements: ${lastMessage.content}`,
+            }
+          ];
+        }
       }
 
+      // Filter out assistant messages that are raw HTML (previous section edits)
+      // to avoid confusing the AI about which section is being targeted
+      const cleanMessages = enhancedMessages.filter((msg: any) => {
+        if (msg.role !== 'assistant') return true;
+        const content = (msg.content || '').trim();
+        return !(
+          content.includes('<table') ||
+          content.includes('<tr') ||
+          content.includes('<!DOCTYPE') ||
+          content.startsWith('SUMMARY:')
+        );
+      });
+
       const result = streamText({
-        model: openai(modelToUse),
+        model: anthropic(modelToUse),
         system: systemPrompt,
         messages: [
           {
             role: "user",
             content: `${contextDescription}:\n\`\`\`html\n${contextHtml}\n\`\`\``,
           },
-          ...enhancedMessages,
+          ...cleanMessages,
         ],
       });
 
-      return result.toDataStreamResponse();
+      return result.toTextStreamResponse();
     } catch (streamError) {
       console.error("StreamText error:", streamError);
       // Log more details about the error

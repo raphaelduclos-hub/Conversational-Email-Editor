@@ -1,4 +1,4 @@
-import { openai } from "@ai-sdk/openai";
+import { anthropic } from "@ai-sdk/anthropic";
 import { generateText } from "ai";
 
 export const runtime = "edge";
@@ -27,6 +27,15 @@ Examples of good suggestions:
 
 export async function POST(req: Request) {
   try {
+    // Check if Anthropic API key is configured
+    if (!process.env.ANTHROPIC_API_KEY) {
+      console.error("ANTHROPIC_API_KEY is not set");
+      return new Response(
+        JSON.stringify({ error: "Anthropic API key is not configured" }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
     const { html } = await req.json();
 
     if (!html) {
@@ -37,13 +46,22 @@ export async function POST(req: Request) {
     }
 
     const result = await generateText({
-      model: openai("gpt-4o-mini"), // Use mini for faster/cheaper suggestions
+      model: anthropic("claude-haiku-4-5-20251001"), // Use Haiku for faster/cheaper suggestions
       system: SUGGESTIONS_SYSTEM_PROMPT,
       prompt: `Current email HTML:\n\`\`\`html\n${html}\n\`\`\`\n\nGenerate 3 suggestions for what to do next.`,
     });
 
-    // Parse the JSON response
-    const parsed = JSON.parse(result.text);
+    // Parse the JSON response (strip markdown code fences if present)
+    let jsonText = result.text.trim();
+
+    // Remove markdown code fences if present
+    if (jsonText.startsWith('```json')) {
+      jsonText = jsonText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    } else if (jsonText.startsWith('```')) {
+      jsonText = jsonText.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
+
+    const parsed = JSON.parse(jsonText);
 
     if (!parsed.suggestions || !Array.isArray(parsed.suggestions)) {
       throw new Error("Invalid suggestions format");

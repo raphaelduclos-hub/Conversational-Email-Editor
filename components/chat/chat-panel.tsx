@@ -1,6 +1,6 @@
 'use client';
 
-import { useChat } from 'ai/react';
+import { useChat } from '@ai-sdk/react';
 import { useEffect, useRef } from 'react';
 import { EmailSection } from '@/components/preview/email-preview';
 import { SelectedSectionCard } from './selected-section-card';

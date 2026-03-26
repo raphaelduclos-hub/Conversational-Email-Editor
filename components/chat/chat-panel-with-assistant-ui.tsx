@@ -1,6 +1,6 @@
 'use client';
 
-import { useChat } from 'ai/react';
+import { useChat } from '@ai-sdk/react';
 import { useEffect, useRef, useState } from 'react';
 import { EmailSection, EmailElement } from '@/components/preview/email-preview';
 import { SelectedSectionCard } from './selected-section-card';
@@ -14,6 +14,7 @@ interface ChatPanelProps {
   currentHtml: string;
   selectedSection?: EmailSection | null;
   selectedElement?: EmailElement | null;
+  selectedElementIds?: string[];
   onHtmlUpdate: (html: string, skipHistory?: boolean) => void;
   onSectionDeselect?: () => void;
   onGenerationComplete?: () => void;
@@ -40,19 +41,34 @@ Could you try being more specific or selecting a section first?`;
   return content;
 }
 
+function parseInlineStyles(style: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (!style) return result;
+  style.split(';').forEach(rule => {
+    const colonIdx = rule.indexOf(':');
+    if (colonIdx === -1) return;
+    const prop = rule.slice(0, colonIdx).trim();
+    const val = rule.slice(colonIdx + 1).trim();
+    if (prop && val) result[prop] = val;
+  });
+  return result;
+}
+
 export function ChatPanel({
   currentHtml,
   selectedSection,
   selectedElement,
+  selectedElementIds,
   onHtmlUpdate,
   onSectionDeselect,
   onGenerationComplete,
-  suggestions = []
+  suggestions = [],
 }: ChatPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [thinkingTime, setThinkingTime] = useState(0);
+  const [completedThinkingTime, setCompletedThinkingTime] = useState<number | null>(null);
   const thinkingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [lastEditedSection, setLastEditedSection] = useState<string | null>(null);
   const [lastEditSummary, setLastEditSummary] = useState<string | null>(null);
@@ -65,22 +81,24 @@ export function ChatPanel({
   // Throttle streaming updates
   const lastStreamUpdateRef = useRef<number>(0);
 
-  const { messages, input, handleInputChange, handleSubmit: originalHandleSubmit, isLoading } = useChat({
-    api: '/api/chat',
-    initialMessages: [
-      {
-        id: 'initial-user',
-        role: 'user',
-        content: `Create a product launch email for this Salomon sneaker: https://www.salomon.com/fr-fr/product/xt-6-gore-tex-lg9333
+  // AI SDK: Manage input state manually
+  const [input, setInput] = useState('');
+
+  // Manual message management for better control
+  const [messages, setMessages] = useState<any[]>([
+    {
+      id: 'initial-user',
+      role: 'user',
+      content: `Create a product launch email for this Salomon sneaker: https://www.salomon.com/fr-fr/product/xt-6-gore-tex-lg9333
 
 TONE: Premium outdoor brand with urban edge. Confident and technical but accessible. Focus on "heritage meets innovation" — trail performance adapted for city life. Aspirational but grounded, avoid hype. High-end technical apparel vibe (Arc'teryx level).
 
 Clean layout with dramatic hero, product details + CTA, tech close-up, 4-feature grid with icons, alternating lifestyle sections, and footer.`
-      },
-      {
-        id: 'initial-assistant',
-        role: 'assistant',
-        content: `I've created a product launch email for the Salomon XT-6 GORE-TEX sneaker that balances technical authority with urban appeal.
+    },
+    {
+      id: 'initial-assistant',
+      role: 'assistant',
+      content: `I've created a product launch email for the Salomon XT-6 GORE-TEX sneaker that balances technical authority with urban appeal.
 
 **What I included:**
 • Hero section with dramatic product imagery and clean headline
@@ -91,12 +109,21 @@ Clean layout with dramatic hero, product details + CTA, tech close-up, 4-feature
 • Footer with unsubscribe, copyright, and social links
 
 **Key decision:** I emphasized the heritage-meets-innovation positioning by pairing technical language ("GORE-TEX waterproofing", "Sensifit construction") with lifestyle photography. The layout is clean and premium, avoiding hype-driven copy in favor of confident, specification-driven messaging that mirrors Arc'teryx's approach.`
+    }
+  ]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // AI SDK: Handle message completion in useEffect
+  useEffect(() => {
+    if (!isLoading && messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage.role === 'assistant') {
+        handleMessageCompletion(lastMessage);
       }
-    ],
-    body: {
-      html: currentHtml,
-    },
-    onFinish: (message) => {
+    }
+  }, [messages, isLoading]);
+
+  const handleMessageCompletion = (message: any) => {
       console.log('✅ Generation complete');
 
       let content = message.content;
@@ -111,8 +138,49 @@ Clean layout with dramatic hero, product details + CTA, tech close-up, 4-feature
         console.log('📝 Edit summary:', summary);
       }
 
-      // Remove markdown code fences if present (```html ... ``` or ``` ... ```)
-      content = content.replace(/^```html\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
+      // Remove markdown code fences if present (```html, ```json, ``` ... ```)
+      content = content.replace(/^```(?:html|json)?\s*/i, '').replace(/\s*```$/, '').trim();
+
+      // Check for multi-edit JSON response
+      const trimmedContent = content.trim();
+      if (trimmedContent.startsWith('{') && trimmedContent.includes('"multi-edit"')) {
+        try {
+          const instruction = JSON.parse(trimmedContent);
+          if (instruction.action === 'multi-edit' && Array.isArray(instruction.changes)) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(currentHtml, 'text/html');
+
+            instruction.changes.forEach((change: { elementId: string; style?: Record<string, string>; text?: string }) => {
+              const el = doc.querySelector(`[data-element-id="${change.elementId}"]`);
+              if (!el) return;
+
+              if (change.style) {
+                const existing = parseInlineStyles(el.getAttribute('style') || '');
+                Object.entries(change.style).forEach(([prop, val]) => {
+                  if (val) existing[prop] = val;
+                  else delete existing[prop];
+                });
+                el.setAttribute('style', Object.entries(existing).map(([k, v]) => `${k}:${v}`).join(';'));
+              }
+
+              if (change.text !== undefined) {
+                el.textContent = change.text;
+              }
+            });
+
+            onHtmlUpdate(doc.body.innerHTML);
+            setLastEditSummary(instruction.summary || `Updated ${instruction.changes.length} elements`);
+            editingSectionRef.current = null;
+            editingElementRef.current = null;
+
+            if (onSectionDeselect) onSectionDeselect();
+            if (onGenerationComplete) onGenerationComplete();
+            return;
+          }
+        } catch {
+          // Not valid JSON, fall through to normal handling
+        }
+      }
 
       // Check if response is HTML (more robust)
       const isHtml = content.includes('<table') ||
@@ -191,20 +259,24 @@ Clean layout with dramatic hero, product details + CTA, tech close-up, 4-feature
       } else if (content.trim().startsWith('{') && content.includes('error')) {
         console.error('AI returned error:', content);
       }
-    },
-  });
+  };
+
+  // AI SDK: Manual input handlers
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+  };
 
   // Auto-scroll to bottom only if user is already near bottom
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
 
-    // Check if user is near bottom (within 100px)
-    const isNearBottom =
-      container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+    const lastMessage = messages[messages.length - 1];
+    // Always scroll when user sends a message or when loading starts
+    const isUserMessage = lastMessage?.role === 'user';
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
 
-    // Only auto-scroll if user is already near bottom
-    if (isNearBottom) {
+    if (isUserMessage || isNearBottom) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages]);
@@ -221,6 +293,10 @@ Clean layout with dramatic hero, product details + CTA, tech close-up, 4-feature
       if (thinkingIntervalRef.current) {
         clearInterval(thinkingIntervalRef.current);
         thinkingIntervalRef.current = null;
+      }
+      // Capture final thinking time when generation completes
+      if (thinkingTime > 0) {
+        setCompletedThinkingTime(thinkingTime);
       }
     }
 
@@ -248,12 +324,27 @@ Clean layout with dramatic hero, product details + CTA, tech close-up, 4-feature
   // Streaming preview disabled for cleaner UX - only show final result
   // The blur animation will handle the loading state visually
 
-  // Wrapper for handleSubmit to store which section/element was edited and pass dynamic data
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  // Custom handleSubmit using fetch directly
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    if (!input.trim() || isLoading) return;
+
+    const userMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: input,
+    };
+
+    // Add user message immediately
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
+    setIsLoading(true);
+
     // Clear any previous validation error
     setValidationError(null);
 
-    // Store the section or element being edited in ref (to avoid stale closure in onFinish)
+    // Store the section or element being edited in ref
     editingSectionRef.current = selectedSection || null;
     editingElementRef.current = selectedElement || null;
 
@@ -265,18 +356,55 @@ Clean layout with dramatic hero, product details + CTA, tech close-up, 4-feature
       setLastEditedSection(null);
     }
 
-    // Pass the current selectedSection/selectedElement values dynamically
-    // Element takes priority over section
-    originalHandleSubmit(e, {
-      body: {
-        html: currentHtml,
-        selectedSectionId: selectedSection?.id,
-        selectedSectionHtml: selectedSection?.html,
-        selectedElementId: selectedElement?.id,
-        selectedElementType: selectedElement?.type,
-        selectedElementTag: selectedElement?.tag,
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [...messages, userMessage],
+          html: currentHtml,
+          selectedSectionId: selectedSection?.id,
+          selectedSectionHtml: selectedSection?.html,
+          selectedElementId: selectedElement?.id,
+          selectedElementType: selectedElement?.type,
+          selectedElementTag: selectedElement?.tag,
+          multiSelectElementIds: selectedElementIds && selectedElementIds.length > 1 ? selectedElementIds : undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('API request failed');
       }
-    });
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let accumulatedContent = '';
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          accumulatedContent += chunk;
+        }
+      }
+
+      // Add assistant message
+      const assistantMessage = {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        content: accumulatedContent,
+      };
+
+      setMessages(prev => [...prev, assistantMessage]);
+      setIsLoading(false);
+
+    } catch (error) {
+      console.error('Chat error:', error);
+      setIsLoading(false);
+      setValidationError('Failed to get response. Please try again.');
+    }
   };
 
   return (
@@ -317,19 +445,17 @@ Clean layout with dramatic hero, product details + CTA, tech close-up, 4-feature
         ) : (
           <>
             {messages.map((message, index) => {
-              // Don't show the last user message if we're loading
-              if (message.role === 'user' && isLoading && index === messages.length - 1) {
-                return null;
-              }
-
               // Don't show the last assistant message if we're loading (avoid showing partial streaming)
               if (message.role === 'assistant' && isLoading && index === messages.length - 1) {
                 return null;
               }
 
-              // Check if message contains HTML (more robust check)
+              // Check if message contains HTML or multi-edit JSON (should be replaced with summary)
               const content = message.content.trim();
-              const isHtmlMessage = message.role === 'assistant' && (
+              const strippedContent = content.replace(/^```(?:html|json)?\s*/i, '').replace(/\s*```$/, '').trim();
+              const isMultiEditMessage = message.role === 'assistant' &&
+                strippedContent.startsWith('{') && strippedContent.includes('"multi-edit"');
+              const isHtmlMessage = isMultiEditMessage || (message.role === 'assistant' && (
                 content.includes('<!DOCTYPE') ||
                 content.includes('<html') ||
                 content.includes('<table') ||
@@ -337,7 +463,7 @@ Clean layout with dramatic hero, product details + CTA, tech close-up, 4-feature
                 content.includes('bgcolor=') ||
                 content.includes('cellpadding=') ||
                 content.startsWith('SUMMARY:')
-              );
+              ));
 
               // Don't show HTML messages at all - replace with summary
               if (isHtmlMessage) {
@@ -347,6 +473,11 @@ Clean layout with dramatic hero, product details + CTA, tech close-up, 4-feature
                     className="flex justify-start"
                   >
                     <div className="w-full text-sm text-foreground whitespace-pre-wrap">
+                      {completedThinkingTime !== null && (
+                        <div className="text-xs text-muted-foreground mb-1">
+                          Thought for {completedThinkingTime}s
+                        </div>
+                      )}
                       {lastEditSummary
                         ? lastEditSummary
                         : lastEditedSection
@@ -469,7 +600,9 @@ Clean layout with dramatic hero, product details + CTA, tech close-up, 4-feature
                 variant="secondary"
                 className="gap-1 pr-1 text-xs font-normal border border-primary/20"
               >
-                {selectedElement ? selectedElement.label : selectedSection?.label}
+                {selectedElement && selectedElementIds && selectedElementIds.length > 1
+                  ? `${selectedElementIds.length} × ${selectedElement.tag.toUpperCase()} selected`
+                  : selectedElement ? selectedElement.label : selectedSection?.label}
                 <Button
                   type="button"
                   variant="ghost"
@@ -483,7 +616,7 @@ Clean layout with dramatic hero, product details + CTA, tech close-up, 4-feature
             </div>
           )}
 
-          <div className="flex items-end gap-2 px-3 py-2">
+          <div className="px-3 pt-2">
             {/* Textarea - auto-expanding */}
             <textarea
               ref={textareaRef}
@@ -501,37 +634,24 @@ Clean layout with dramatic hero, product details + CTA, tech close-up, 4-feature
               placeholder="Ask for edits, add sections, refine the tone..."
               disabled={isLoading}
               rows={1}
-              className="flex-1 border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 shadow-none px-2 py-2 text-sm resize-none outline-none min-h-[24px] max-h-[72px] overflow-y-auto scrollbar-hide"
+              className="w-full border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 shadow-none px-2 py-1 text-sm resize-none outline-none min-h-[24px] max-h-[72px] overflow-y-auto scrollbar-hide"
               style={{ height: '24px' }}
             />
+          </div>
 
+          {/* Bottom row: Send button (right) */}
+          <div className="flex items-center justify-end px-3 py-2">
             {/* Send button - circular with arrow */}
             <Button
               type="submit"
               disabled={isLoading || !input.trim()}
               size="icon"
-              className="flex-shrink-0 h-9 w-9 rounded-full bg-muted hover:bg-muted/80 text-foreground disabled:opacity-50 mb-0.5"
+              className="flex-shrink-0 h-9 w-9 rounded-full bg-muted hover:bg-muted/80 text-foreground disabled:opacity-50"
             >
               {isLoading ? (
-                <svg
-                  className="animate-spin h-4 w-4"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  />
+                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                 </svg>
               ) : (
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">

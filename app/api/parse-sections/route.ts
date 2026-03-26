@@ -121,6 +121,15 @@ function extractElementsFromSection(
   const elements: EmailElement[] = [];
   let elementCounter = 0;
 
+  // Helper: get or create a stable element ID
+  const getOrCreateId = ($el: cheerio.Cheerio<any>, tag: string): string => {
+    const existing = $el.attr('data-element-id');
+    if (existing) return existing;
+    const newId = `element-${sectionId}-${tag}-${elementCounter++}`;
+    $el.attr('data-element-id', newId);
+    return newId;
+  };
+
   // Extract headings (h1, h2, h3, h4, h5, h6)
   row.find('h1, h2, h3, h4, h5, h6').each((_, el) => {
     const $el = $(el);
@@ -128,8 +137,7 @@ function extractElementsFromSection(
     const text = $el.text().trim();
 
     if (text.length > 0) {
-      const elementId = `element-${sectionId}-${tag}-${elementCounter++}`;
-      $el.attr('data-element-id', elementId);
+      const elementId = getOrCreateId($el, tag);
       $el.attr('data-element-type', 'heading');
 
       elements.push({
@@ -147,14 +155,11 @@ function extractElementsFromSection(
   row.find('img').each((_, el) => {
     const $el = $(el);
     const alt = $el.attr('alt') || 'Image';
-    const src = $el.attr('src') || '';
 
-    const elementId = `element-${sectionId}-img-${elementCounter++}`;
-    $el.attr('data-element-id', elementId);
+    const elementId = getOrCreateId($el, 'img');
     $el.attr('data-element-type', 'image');
 
-    // Keep label short (max 25 chars for alt text)
-    const shortAlt = alt.length > 25 ? alt.substring(0, 25) + '...' : alt;
+    const shortAlt = alt.length > 30 ? alt.substring(0, 30) + '...' : alt;
 
     elements.push({
       id: elementId,
@@ -172,14 +177,12 @@ function extractElementsFromSection(
     const style = $el.attr('style') || '';
     const text = $el.text().trim();
 
-    // Check if it's a button (has background-color or looks like a button)
     const isButton = style.includes('background-color') ||
                      style.includes('background:') ||
                      $el.attr('role') === 'button';
 
     if (isButton && text.length > 0) {
-      const elementId = `element-${sectionId}-button-${elementCounter++}`;
-      $el.attr('data-element-id', elementId);
+      const elementId = getOrCreateId($el, 'button');
       $el.attr('data-element-type', 'button');
 
       elements.push({
@@ -191,9 +194,7 @@ function extractElementsFromSection(
         preview: text,
       });
     } else if (text.length > 0) {
-      // Regular link
-      const elementId = `element-${sectionId}-link-${elementCounter++}`;
-      $el.attr('data-element-id', elementId);
+      const elementId = getOrCreateId($el, 'link');
       $el.attr('data-element-type', 'link');
 
       elements.push({
@@ -212,13 +213,11 @@ function extractElementsFromSection(
     const $el = $(el);
     const text = $el.text().trim();
 
-    // Only include text blocks with meaningful content (min 3 chars, no child interactive elements)
-    // Exclude if it contains other structured elements (except simple formatting like strong, em)
     const hasStructuredChildren = $el.find('a, img, h1, h2, h3, h4, h5, h6, p, div, table').length > 0;
+    const isInsideButton = $el.closest('[data-element-type="button"]').length > 0;
 
-    if (text.length >= 3 && !hasStructuredChildren) {
-      const elementId = `element-${sectionId}-text-${elementCounter++}`;
-      $el.attr('data-element-id', elementId);
+    if (text.length >= 3 && !hasStructuredChildren && !isInsideButton) {
+      const elementId = getOrCreateId($el, 'text');
       $el.attr('data-element-type', 'text');
 
       elements.push({
@@ -226,7 +225,7 @@ function extractElementsFromSection(
         sectionId,
         type: 'text',
         tag: el.name,
-        label: `Text: ${text.substring(0, 40)}${text.length > 40 ? '...' : ''}`,
+        label: `Text: ${text.substring(0, 30)}${text.length > 30 ? '...' : ''}`,
         preview: text,
       });
     }
@@ -250,13 +249,13 @@ function generateSectionLabel(
   // Check for HR separator
   const hr = row.find('hr');
   if (hr.length > 0 && text.length < 10) {
-    return 'Divider';
+    return 'Section: Divider';
   }
 
   // Check for footer (unsubscribe, copyright, legal text)
   if (text.includes('unsubscribe') || text.includes('©') || text.includes('copyright') ||
       text.includes('all rights reserved') || text.includes('manage your preferences')) {
-    return 'Footer';
+    return 'Section: Footer';
   }
 
   // Check for header (logo + navigation)
@@ -272,57 +271,57 @@ function generateSectionLabel(
   }).length >= 3;
 
   if (hasLogo && hasNav) {
-    return 'Header';
+    return 'Section: Header';
   }
 
   // Check for features grid (multiple feature boxes)
   const featureBoxes = row.find('table[style*="background-color:#f8f9fa"]');
   if (featureBoxes.length >= 2 || (headings.length > 0 && text.includes('engineered'))) {
-    return 'Features';
+    return 'Section: Features';
   }
 
   // Check for quote section (italic text, centered, no images)
   const hasItalic = row.find('p[style*="font-style:italic"]').length > 0;
   if (hasItalic && images.length === 0 && text.length > 50 && text.length < 300) {
-    return 'Quote';
+    return 'Section: Quote';
   }
 
   // Check for product section (heading + price + button)
   const hasPrice = text.includes('eur') || text.includes('$') || /\d+[,.]00/.test(text);
   if (headings.length > 0 && hasPrice && buttons.length > 0) {
-    return 'Product details';
+    return 'Section: Product details';
   }
 
   // Check for CTA section (button + large heading)
   if (buttons.length > 0 && headings.length > 0 && text.includes('?')) {
-    return 'Call to action';
+    return 'Section: Call to action';
   }
 
   // Check for text + image sections (zigzag layouts)
   if (images.length > 0 && headings.length > 0 && text.length > 100) {
-    return 'Text + Image';
+    return 'Section: Text + Image';
   }
 
   // Check for image-only sections (just an image, minimal text)
   if (images.length > 0 && text.length < 50) {
-    return 'Image section';
+    return 'Section: Image';
   }
 
   // Check for hero sections (large image at top)
   if (images.length > 0 && index < 3) {
-    return 'Hero image';
+    return 'Section: Hero';
   }
 
   // Check for image section
   if (images.length > 0) {
-    return 'Image section';
+    return 'Section: Image';
   }
 
   // Text-only sections
   if (headings.length > 0) {
-    return 'Text section';
+    return 'Section: Text';
   }
 
   // Last resort
-  return `Section ${index + 1}`;
+  return `Section: ${index + 1}`;
 }

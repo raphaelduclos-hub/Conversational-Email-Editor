@@ -1,23 +1,33 @@
 'use client';
 
-import { Pencil } from 'lucide-react';
+import Image from 'next/image';
+import { X } from 'lucide-react';
 
-export function DesignEmptyState() {
+interface DesignEmptyStateProps {
+  onClose?: () => void;
+}
+
+export function DesignEmptyState({ onClose }: DesignEmptyStateProps) {
   return (
     <div className="flex flex-col h-full bg-background border-r border-border">
-      {/* Header */}
-      <div className="p-4 border-b border-border">
-        <h2 className="text-lg font-semibold text-foreground">
-          Design
-        </h2>
-      </div>
+      {/* Header - close button only */}
+      {onClose && (
+        <div className="px-4 py-3 flex items-center justify-end">
+          <button
+            onClick={onClose}
+            className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* Empty state */}
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="flex flex-col items-center text-center max-w-sm">
           {/* Icon */}
           <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-6">
-            <Pencil className="w-7 h-7 text-muted-foreground" />
+            <Image src="/icons/design-icon.svg" alt="Design" width={28} height={28} className="opacity-50" />
           </div>
 
           {/* Title */}
@@ -27,7 +37,7 @@ export function DesignEmptyState() {
 
           {/* Description */}
           <p className="text-sm text-muted-foreground leading-relaxed">
-            Click on any element in your email template to start live editing its styles, content, and properties.
+            Select any element in the preview to edit its properties, styles, and content directly.
           </p>
         </div>
       </div>

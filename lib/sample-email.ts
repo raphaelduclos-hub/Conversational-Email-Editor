@@ -58,7 +58,7 @@ export const SAMPLE_EMAIL = `<html><head></head><body style="background-color:#f
                   </td>
                 </tr>
               </tbody>
-            </table></td></tr><tr style="width:100%"><td><hr style="width:100%;border:none;border-top:1px solid #eaeaea;border-color:#e5e7eb;border-width:1px;border-style:solid;margin:0"></td></tr><tr style="width:100%"><td><table align="center" width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;background-color:#f8f9fa;padding:0">
+            </table></td></tr><tr style="width:100%"><td><table align="center" width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;background-color:#ffffff;padding:0">
               <tbody>
                 <tr>
                   <td>
@@ -133,7 +133,7 @@ export const SAMPLE_EMAIL = `<html><head></head><body style="background-color:#f
                   </td>
                 </tr>
               </tbody>
-            </table></td></tr><tr style="width:100%"><td><table align="center" width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;padding:0;background-color:#1a1a1a">
+            </table></td></tr><tr style="width:100%"><td><table align="center" width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;padding:0;background-color:#ffffff">
               <tbody>
                 <tr>
                   <td>
@@ -161,7 +161,7 @@ export const SAMPLE_EMAIL = `<html><head></head><body style="background-color:#f
                   </td>
                 </tr>
               </tbody>
-            </table></td></tr><tr style="width:100%"><td><hr style="width:100%;border:none;border-top:1px solid #eaeaea;border-color:#f3f4f6;border-width:1px;border-style:solid;margin:0 40px"></td></tr><tr style="width:100%"><td><table align="center" width="100%" class="content-padding" border="0" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;padding-top:56px;padding-bottom:56px;padding-left:40px;padding-right:40px;background-color:#ffffff">
+            </table></td></tr><tr style="width:100%"><td><table align="center" width="100%" class="content-padding" border="0" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;padding-top:56px;padding-bottom:56px;padding-left:40px;padding-right:40px;background-color:#ffffff">
               <tbody>
                 <tr>
                   <td>
@@ -375,7 +375,7 @@ export const SAMPLE_EMAIL = `<html><head></head><body style="background-color:#f
                   </td>
                 </tr>
               </tbody>
-            </table></td></tr><tr style="width:100%"><td><hr style="width:100%;border:none;border-top:1px solid #eaeaea;border-color:#f3f4f6;border-width:1px;border-style:solid;margin:0 40px"></td></tr><tr style="width:100%"><td><table align="center" width="100%" class="content-padding" border="0" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;padding-top:56px;padding-bottom:56px;padding-left:40px;padding-right:40px;background-color:#ffffff">
+            </table></td></tr><tr style="width:100%"><td><table align="center" width="100%" class="content-padding" border="0" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;padding-top:56px;padding-bottom:56px;padding-left:40px;padding-right:40px;background-color:#ffffff">
               <tbody>
                 <tr>
                   <td>
@@ -439,7 +439,7 @@ export const SAMPLE_EMAIL = `<html><head></head><body style="background-color:#f
                   </td>
                 </tr>
               </tbody>
-            </table></td></tr><tr style="width:100%"><td><hr style="width:100%;border:none;border-top:1px solid #eaeaea;border-color:#f3f4f6;border-width:1px;border-style:solid;margin:0 40px"></td></tr><tr style="width:100%"><td><table align="center" width="100%" class="content-padding" border="0" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;padding-top:40px;padding-bottom:40px;padding-left:40px;padding-right:40px;background-color:#f8f9fa">
+            </table></td></tr><tr style="width:100%"><td><table align="center" width="100%" class="content-padding" border="0" cellpadding="0" cellspacing="0" role="presentation" style="max-width:600px;padding-top:40px;padding-bottom:40px;padding-left:40px;padding-right:40px;background-color:#f8f9fa">
               <tbody>
                 <tr>
                   <td>
