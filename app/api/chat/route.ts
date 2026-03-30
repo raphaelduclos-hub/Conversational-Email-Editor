@@ -161,7 +161,7 @@ Your response must be EXACTLY ONE <tr> element. Count your <tr> tags before resp
 
     try {
       // Use Claude 3.5 Sonnet for better precision in HTML editing
-      const modelToUse = "claude-sonnet-4-5-20250929";
+      const modelToUse = "claude-sonnet-4-6";
 
       console.log('🤖 AI Model:', modelToUse, '| Element ID:', selectedElementId || 'none');
 
