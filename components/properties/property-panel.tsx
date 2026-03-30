@@ -34,17 +34,28 @@ interface ImageProperties {
   borderRadius: string;
 }
 
+const EMAIL_FONTS = [
+  { label: 'Arial', value: "Arial, Helvetica, sans-serif" },
+  { label: 'Verdana', value: "Verdana, Geneva, sans-serif" },
+  { label: 'Trebuchet MS', value: "'Trebuchet MS', Helvetica, sans-serif" },
+  { label: 'Georgia', value: "Georgia, 'Times New Roman', serif" },
+  { label: 'Times New Roman', value: "'Times New Roman', Times, serif" },
+  { label: 'Courier New', value: "'Courier New', Courier, monospace" },
+] as const;
+
 interface TextProperties {
   content: string;
   fontSize: string;
   fontWeight: string;
   fontStyle: string;
+  fontFamily: string;
   textAlign: string;
   color: string;
   backgroundColor: string;
   paddingV: string;
   paddingH: string;
   borderRadius: string;
+  href: string;
 }
 
 export function PropertyPanel({
@@ -77,12 +88,14 @@ export function PropertyPanel({
     fontSize: '',
     fontWeight: '',
     fontStyle: '',
+    fontFamily: '',
     textAlign: '',
     color: '',
     backgroundColor: '',
     paddingV: '',
     paddingH: '',
-    borderRadius: ''
+    borderRadius: '',
+    href: ''
   });
 
   // Store original HTML to support Discard
@@ -297,6 +310,21 @@ export function PropertyPanel({
               </div>
 
               <div className="flex items-center justify-between">
+                <Label className="text-base font-normal">Font</Label>
+                <select
+                  value=""
+                  onChange={(e) => handleBulkStyleUpdate('font-family', e.target.value)}
+                  className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {EMAIL_FONTS.map((font) => (
+                    <option key={font.value} value={font.value} style={{ fontFamily: font.value || undefined }}>
+                      {font.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center justify-between">
                 <Label className="text-base font-normal">Text color</Label>
                 <input
                   type="color"
@@ -439,15 +467,24 @@ export function PropertyPanel({
         </div>
 
         {/* Content textarea */}
-        <div className="p-4 border-b border-border">
-          <Label htmlFor="text-content" className="text-sm font-medium">Content</Label>
-          <textarea
-            id="text-content"
-            rows={4}
-            value={textProperties.content}
-            onChange={(e) => handleTextPropertyChange('content', e.target.value)}
-            className="mt-1.5 w-full resize-none text-sm rounded-md border border-input bg-background px-3 py-2 ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          />
+        <div className="p-4 border-b border-border space-y-3">
+          <div>
+            <Label htmlFor="text-content" className="text-sm font-medium">Content</Label>
+            <textarea
+              id="text-content"
+              rows={4}
+              value={textProperties.content}
+              onChange={(e) => handleTextPropertyChange('content', e.target.value)}
+              className="mt-1.5 w-full resize-none text-sm rounded-md border border-input bg-background px-3 py-2 ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            />
+          </div>
+
+          {(selectedElement.type === 'button' || selectedElement.type === 'link') && (
+            <div>
+              <Label htmlFor="link-target" className="text-sm font-medium">Link target</Label>
+              <Input id="link-target" type="url" value={textProperties.href} onChange={(e) => handleTextPropertyChange('href', e.target.value)} placeholder="https://..." className="mt-1.5" />
+            </div>
+          )}
         </div>
 
         {/* Properties form */}
@@ -481,6 +518,22 @@ export function PropertyPanel({
                 <span className="text-sm text-muted-foreground">px</span>
               </div>
             </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <Label htmlFor="font-family" className="text-base font-normal">Font</Label>
+            <select
+              id="font-family"
+              value={textProperties.fontFamily}
+              onChange={(e) => handleTextPropertyChange('fontFamily', e.target.value)}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {EMAIL_FONTS.map((font) => (
+                <option key={font.value} value={font.value} style={{ fontFamily: font.value || undefined }}>
+                  {font.label}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="flex items-center justify-between">
@@ -887,12 +940,14 @@ function extractTextProperties(fullHtml: string, elementId: string): TextPropert
       fontSize: '',
       fontWeight: '',
       fontStyle: '',
+      fontFamily: '',
       textAlign: '',
       color: '',
       backgroundColor: '',
       paddingV: '',
       paddingH: '',
-      borderRadius: ''
+      borderRadius: '',
+      href: ''
     };
   }
 
@@ -905,17 +960,28 @@ function extractTextProperties(fullHtml: string, elementId: string): TextPropert
     fontSize = fontSize.replace('px', '');
   }
 
+  // Extract href: from the element itself if it's an <a>, or from a child <a>
+  const anchorEl = el.tagName === 'A' ? el : el.querySelector('a');
+  const href = anchorEl ? (anchorEl.getAttribute('href') || '') : '';
+
+  // Match extracted font-family against known EMAIL_FONTS values
+  const rawFontFamily = styles['font-family'] || '';
+  const matchedFont = EMAIL_FONTS.find(f => f.value && f.value === rawFontFamily);
+  const fontFamily = matchedFont ? matchedFont.value : (rawFontFamily ? rawFontFamily : '');
+
   return {
     content: (el.textContent || '').replace(/\s+/g, ' ').trim(),
     fontSize,
     fontWeight: styles['font-weight'] || '',
     fontStyle: styles['font-style'] || '',
+    fontFamily,
     textAlign: styles['text-align'] || '',
     color: styles['color'] || '',
     backgroundColor: styles['background-color'] || '',
     paddingV: parsePaddingVH(styles['padding'] || '').v,
     paddingH: parsePaddingVH(styles['padding'] || '').h,
-    borderRadius: styles['border-radius'] || ''
+    borderRadius: styles['border-radius'] || '',
+    href
   };
 }
 
@@ -981,6 +1047,12 @@ function updateTextProperties(
     delete styles['font-style'];
   }
 
+  if (properties.fontFamily) {
+    styles['font-family'] = properties.fontFamily;
+  } else {
+    delete styles['font-family'];
+  }
+
   if (properties.textAlign) {
     styles['text-align'] = properties.textAlign;
   } else {
@@ -1020,6 +1092,18 @@ function updateTextProperties(
     el.setAttribute('style', newStyle);
   } else {
     el.removeAttribute('style');
+  }
+
+  // Update href on the element itself if it's an <a>, or on a child <a>
+  if (properties.href !== undefined) {
+    const anchorEl = el.tagName === 'A' ? el : el.querySelector('a');
+    if (anchorEl) {
+      if (properties.href) {
+        anchorEl.setAttribute('href', properties.href);
+      } else {
+        anchorEl.removeAttribute('href');
+      }
+    }
   }
 
   return doc.body.innerHTML;

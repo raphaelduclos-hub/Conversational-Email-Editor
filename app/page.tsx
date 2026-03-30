@@ -150,6 +150,7 @@ export default function Home() {
           const newSectionId = `section-${currentIndex - 1}`;
           if (selectedSection) {
             setSelectedSection({ ...selectedSection, id: newSectionId, index: currentIndex - 1 });
+            setSelectedSectionIds([newSectionId]);
           } else if (selectedElement) {
             setSelectedElement({ ...selectedElement, sectionId: newSectionId });
           }
@@ -176,6 +177,7 @@ export default function Home() {
           const newSectionId = `section-${currentIndex + 1}`;
           if (selectedSection) {
             setSelectedSection({ ...selectedSection, id: newSectionId, index: currentIndex + 1 });
+            setSelectedSectionIds([newSectionId]);
           } else if (selectedElement) {
             setSelectedElement({ ...selectedElement, sectionId: newSectionId });
           }

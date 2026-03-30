@@ -68,10 +68,7 @@ export function ChatPanel({
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [thinkingTime, setThinkingTime] = useState(0);
-  const [completedThinkingTime, setCompletedThinkingTime] = useState<number | null>(null);
   const thinkingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const [lastEditedSection, setLastEditedSection] = useState<string | null>(null);
-  const [lastEditSummary, setLastEditSummary] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
 
   // Use ref to track the section or element being edited (to avoid stale closure in onFinish)
@@ -176,9 +173,12 @@ Clean layout with dramatic hero, product details + CTA, tech close-up, 4-feature
             });
 
             onHtmlUpdate(doc.body.innerHTML);
-            const summary = instruction.summary ||
+            const editSummary = instruction.summary ||
               (instruction.action === 'single-edit' ? 'Updated element' : `Updated ${changes.length} elements`);
-            setLastEditSummary(summary);
+            // Replace raw JSON in messages with the summary so each message shows its own text
+            setMessages(prev => prev.map((m, i) =>
+              i === prev.length - 1 ? { ...m, content: editSummary, _thinkingTime: thinkingTime } : m
+            ));
             editingSectionRef.current = null;
             editingElementRef.current = null;
 
@@ -236,21 +236,25 @@ Clean layout with dramatic hero, product details + CTA, tech close-up, 4-feature
         // If element is selected, merge using the parent section
         // If section is selected, merge using section
         // Otherwise full replace
+        const displaySummary = summary ||
+          (editingElement ? `✓ Updated "${editingElement.label}"` :
+           editingSection ? `✓ Updated "${editingSection.label}" section` :
+           '✓ Updated email');
+
         if (editingElement) {
-          // For elements, use the parent section for merging
           const merged = mergeSectionHtml(currentHtml, editingElement.sectionId, content);
           onHtmlUpdate(merged);
-          // Save the summary for display
-          setLastEditSummary(summary);
         } else if (editingSection) {
           const merged = mergeSectionHtml(currentHtml, editingSection.id, content);
           onHtmlUpdate(merged);
-          // Save the summary for display
-          setLastEditSummary(summary);
         } else {
           onHtmlUpdate(content);
-          setLastEditSummary(summary);
         }
+
+        // Replace raw HTML in messages with the summary so each message shows its own text
+        setMessages(prev => prev.map((m, i) =>
+          i === prev.length - 1 ? { ...m, content: displaySummary, _thinkingTime: thinkingTime } : m
+        ));
 
         // Deselect section/element after successful edit
         if ((editingSection || editingElement) && onSectionDeselect) {
@@ -303,10 +307,6 @@ Clean layout with dramatic hero, product details + CTA, tech close-up, 4-feature
         clearInterval(thinkingIntervalRef.current);
         thinkingIntervalRef.current = null;
       }
-      // Capture final thinking time when generation completes
-      if (thinkingTime > 0) {
-        setCompletedThinkingTime(thinkingTime);
-      }
     }
 
     return () => {
@@ -357,13 +357,6 @@ Clean layout with dramatic hero, product details + CTA, tech close-up, 4-feature
     editingSectionRef.current = selectedSection || null;
     editingElementRef.current = selectedElement || null;
 
-    if (selectedElement) {
-      setLastEditedSection(selectedElement.label);
-    } else if (selectedSection) {
-      setLastEditedSection(selectedSection.label);
-    } else {
-      setLastEditedSection(null);
-    }
 
     try {
       const response = await fetch('/api/chat', {
@@ -459,40 +452,17 @@ Clean layout with dramatic hero, product details + CTA, tech close-up, 4-feature
                 return null;
               }
 
-              // Check if message contains HTML or multi-edit JSON (should be replaced with summary)
-              const content = message.content.trim();
-              const strippedContent = content.replace(/^```(?:html|json)?\s*/i, '').replace(/\s*```$/, '').trim();
-              const isMultiEditMessage = message.role === 'assistant' &&
-                strippedContent.startsWith('{') && (strippedContent.includes('"multi-edit"') || strippedContent.includes('"single-edit"'));
-              const isHtmlMessage = isMultiEditMessage || (message.role === 'assistant' && (
-                content.includes('<!DOCTYPE') ||
-                content.includes('<html') ||
-                content.includes('<table') ||
-                content.includes('<tr') ||
-                content.includes('bgcolor=') ||
-                content.includes('cellpadding=') ||
-                content.startsWith('SUMMARY:')
-              ));
-
-              // Don't show HTML messages at all - replace with summary
-              if (isHtmlMessage) {
+              // Edit summary messages have _thinkingTime stored on them
+              if (message.role === 'assistant' && message._thinkingTime !== undefined) {
                 return (
-                  <div
-                    key={index}
-                    className="flex justify-start"
-                  >
+                  <div key={index} className="flex justify-start">
                     <div className="w-full text-sm text-foreground whitespace-pre-wrap">
-                      {completedThinkingTime !== null && (
+                      {message._thinkingTime > 0 && (
                         <div className="text-xs text-muted-foreground mb-1">
-                          Thought for {completedThinkingTime}s
+                          Thought for {message._thinkingTime}s
                         </div>
                       )}
-                      {lastEditSummary
-                        ? lastEditSummary
-                        : lastEditedSection
-                        ? `✓ Updated "${lastEditedSection}" section`
-                        : '✓ Updated email'
-                      }
+                      {message.content}
                     </div>
                   </div>
                 );

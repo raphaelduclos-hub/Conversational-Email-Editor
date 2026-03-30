@@ -44,6 +44,7 @@ export function EmailPreview({
   const [sections, setSections] = useState<EmailSection[]>([]);
   const [elements, setElements] = useState<EmailElement[]>([]);
   const [enhancedHtml, setEnhancedHtml] = useState(html);
+  const [iframeHeight, setIframeHeight] = useState<number>(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const selectionRef = useRef({ selectedSectionIds: selectedSectionIds || [], selectedElementIds: selectedElementIds || [] });
 
@@ -165,13 +166,13 @@ export function EmailPreview({
           className="w-full border-0 block"
           style={{
             colorScheme: 'normal',
-            height: 'auto',
+            height: iframeHeight > 0 ? `${iframeHeight}px` : 'auto',
           }}
           onLoad={(e) => {
             const iframe = e.currentTarget;
             if (iframe.contentWindow) {
               const height = iframe.contentWindow.document.body.scrollHeight;
-              iframe.style.height = height + 'px';
+              setIframeHeight(height);
               // Re-apply selection after iframe reloads (e.g. after move/delete)
               const { selectedSectionIds: sids, selectedElementIds: eids } = selectionRef.current;
               if (sids.length > 0 || eids.length > 0) {
