@@ -236,10 +236,17 @@ Clean layout with dramatic hero, product details + CTA, tech close-up, 4-feature
         // If element is selected, merge using the parent section
         // If section is selected, merge using section
         // Otherwise full replace
-        const displaySummary = summary ||
-          (editingElement ? `✓ Updated "${editingElement.label}"` :
-           editingSection ? `✓ Updated "${editingSection.label}" section` :
-           '✓ Updated email');
+        const target = editingElement
+          ? `"${editingElement.label}"`
+          : editingSection
+          ? `"${editingSection.label}"`
+          : null;
+        const displaySummary = summary && target
+          ? `${summary}\n\n_Applied to ${target}_`
+          : summary ||
+            (editingElement ? `✓ Updated "${editingElement.label}"` :
+             editingSection ? `✓ Updated "${editingSection.label}"` :
+             '✓ Updated email');
 
         if (editingElement) {
           const merged = mergeSectionHtml(currentHtml, editingElement.sectionId, content);
@@ -454,15 +461,20 @@ Clean layout with dramatic hero, product details + CTA, tech close-up, 4-feature
 
               // Edit summary messages have _thinkingTime stored on them
               if (message.role === 'assistant' && message._thinkingTime !== undefined) {
+                const lines = message.content.split('\n').filter((l: string) => l.trim() !== '');
                 return (
                   <div key={index} className="flex justify-start">
-                    <div className="w-full text-sm text-foreground whitespace-pre-wrap">
+                    <div className="w-full text-sm text-foreground">
                       {message._thinkingTime > 0 && (
                         <div className="text-xs text-muted-foreground mb-1">
                           Thought for {message._thinkingTime}s
                         </div>
                       )}
-                      {message.content}
+                      {lines.map((line: string, i: number) =>
+                        line.startsWith('_') && line.endsWith('_')
+                          ? <div key={i} className="text-xs text-muted-foreground mt-1 italic">{line.slice(1, -1)}</div>
+                          : <div key={i}>{line}</div>
+                      )}
                     </div>
                   </div>
                 );

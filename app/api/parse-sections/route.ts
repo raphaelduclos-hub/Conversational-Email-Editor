@@ -110,6 +110,17 @@ function extractSectionsFromTable(
     });
   });
 
+  // Deduplicate labels: append " #2", " #3"... when the same label appears multiple times
+  const labelCounts: Record<string, number> = {};
+  const labelSeen: Record<string, number> = {};
+  sections.forEach(s => { labelCounts[s.label] = (labelCounts[s.label] || 0) + 1; });
+  sections.forEach(s => {
+    if (labelCounts[s.label] > 1) {
+      labelSeen[s.label] = (labelSeen[s.label] || 0) + 1;
+      s.label = `${s.label} #${labelSeen[s.label]}`;
+    }
+  });
+
   return { sections, elements };
 }
 
@@ -244,7 +255,14 @@ function generateSectionLabel(
   const headings = row.find('h1, h2, h3');
   const links = row.find('a');
   const buttons = row.find('a[style*="background-color"]');
-  const tables = row.find('table');
+
+  // Helper: get first heading text, truncated
+  const firstHeadingText = headings.length > 0
+    ? headings.first().text().trim().replace(/\s+/g, ' ')
+    : '';
+  const headingSuffix = firstHeadingText
+    ? ` — ${firstHeadingText.length > 25 ? firstHeadingText.substring(0, 25) + '…' : firstHeadingText}`
+    : '';
 
   // Check for HR separator
   const hr = row.find('hr');
@@ -277,7 +295,7 @@ function generateSectionLabel(
   // Check for features grid (multiple feature boxes)
   const featureBoxes = row.find('table[style*="background-color:#f8f9fa"]');
   if (featureBoxes.length >= 2 || (headings.length > 0 && text.includes('engineered'))) {
-    return 'Section: Features';
+    return `Section: Features${headingSuffix}`;
   }
 
   // Check for quote section (italic text, centered, no images)
@@ -289,17 +307,17 @@ function generateSectionLabel(
   // Check for product section (heading + price + button)
   const hasPrice = text.includes('eur') || text.includes('$') || /\d+[,.]00/.test(text);
   if (headings.length > 0 && hasPrice && buttons.length > 0) {
-    return 'Section: Product details';
+    return `Section: Product details${headingSuffix}`;
   }
 
   // Check for CTA section (button + large heading)
   if (buttons.length > 0 && headings.length > 0 && text.includes('?')) {
-    return 'Section: Call to action';
+    return `Section: Call to action${headingSuffix}`;
   }
 
   // Check for text + image sections (zigzag layouts)
   if (images.length > 0 && headings.length > 0 && text.length > 100) {
-    return 'Section: Text + Image';
+    return `Section: Text + Image${headingSuffix}`;
   }
 
   // Check for image-only sections (just an image, minimal text)
@@ -309,17 +327,17 @@ function generateSectionLabel(
 
   // Check for hero sections (large image at top)
   if (images.length > 0 && index < 3) {
-    return 'Section: Hero';
+    return `Section: Hero${headingSuffix}`;
   }
 
   // Check for image section
   if (images.length > 0) {
-    return 'Section: Image';
+    return `Section: Image${headingSuffix}`;
   }
 
   // Text-only sections
   if (headings.length > 0) {
-    return 'Section: Text';
+    return `Section: Text${headingSuffix}`;
   }
 
   // Last resort
